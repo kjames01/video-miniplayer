@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src * blob: data:; connect-src * https://generativelanguage.googleapis.com;">
+  <title>Video Miniplayer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Title Bar -->
+    <div id="title-bar">
+      <div class="title-text">Video Miniplayer</div>
+      <div class="window-controls">
+        <button id="chat-toggle-btn" class="control-btn" title="Toggle Chat (Ctrl+Shift+C)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </button>
+        <button id="pin-btn" class="control-btn" title="Always on Top">📌</button>
+        <button id="minimize-btn" class="control-btn" title="Minimize">─</button>
+        <button id="close-btn" class="control-btn close" title="Close">✕</button>
+      </div>
+    </div>
+
+    <!-- URL Input Section -->
+    <div id="url-section">
+      <div class="url-input-wrapper">
+        <input type="text" id="url-input" placeholder="Paste video URL here..." autocomplete="off">
+        <button id="load-btn">▶</button>
+      </div>
+      <div id="status-text"></div>
+    </div>
+
+    <!-- Video Container -->
+    <div id="video-container">
+      <video id="video-player" playsinline>
+        Your browser does not support video playback.
+      </video>
+
+      <!-- Video Controls -->
+      <div id="video-controls">
+        <button id="play-pause-btn" class="ctrl-btn">▶</button>
+        <div id="progress-container">
+          <div id="progress-bar">
+            <div id="progress-filled"></div>
+          </div>
+          <span id="time-display">0:00 / 0:00</span>
+        </div>
+        <div id="volume-container">
+          <button id="mute-btn" class="ctrl-btn">🔊</button>
+          <input type="range" id="volume-slider" min="0" max="100" value="100">
+        </div>
+      </div>
+
+      <!-- Loading Overlay -->
+      <div id="loading-overlay" class="hidden">
+        <div class="spinner"></div>
+        <span>Loading video...</span>
+      </div>
+
+      <!-- Placeholder when no video -->
+      <div id="placeholder">
+        <div class="placeholder-icon">🎬</div>
+        <div class="placeholder-text">Paste a video URL to start</div>
+      </div>
+    </div>
+
+    <!-- Chat Panel -->
+    <div id="chat-panel"></div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
