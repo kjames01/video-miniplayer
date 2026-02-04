@@ -6,7 +6,7 @@ import { app } from 'electron';
 import { ChatMessage, GeminiSettings } from '../shared/types';
 
 const SETTINGS_FILE = 'gemini-settings.json';
-const DEFAULT_MODEL = 'gemini-1.5-flash';
+const DEFAULT_MODEL = 'gemini-2.0-flash';
 
 export class GeminiService {
   private genAI: GoogleGenerativeAI | null = null;
