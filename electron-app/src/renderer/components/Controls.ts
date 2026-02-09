@@ -8,6 +8,7 @@ export class Controls {
   private timeDisplay: HTMLElement;
   private muteBtn: HTMLButtonElement;
   private volumeSlider: HTMLInputElement;
+  private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
 
   constructor(player: VideoPlayer) {
     this.player = player;
@@ -74,7 +75,7 @@ export class Controls {
     });
 
     // Keyboard controls
-    document.addEventListener('keydown', (e) => {
+    this.keydownHandler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return;
 
       switch (e.key) {
@@ -105,17 +106,34 @@ export class Controls {
           this.updateMuteButton();
           break;
       }
-    });
+    };
+    document.addEventListener('keydown', this.keydownHandler);
 
-    // Double-click to toggle play/pause
-    video.addEventListener('dblclick', () => {
-      this.player.togglePlayPause();
-    });
+    // Click/double-click handling with debounce to prevent triple-toggle
+    let clickTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    // Single-click to toggle play/pause
     video.addEventListener('click', () => {
+      if (clickTimeout !== null) return; // ignore if waiting for dblclick
+      clickTimeout = setTimeout(() => {
+        clickTimeout = null;
+        this.player.togglePlayPause();
+      }, 250);
+    });
+
+    video.addEventListener('dblclick', () => {
+      if (clickTimeout !== null) {
+        clearTimeout(clickTimeout);
+        clickTimeout = null;
+      }
       this.player.togglePlayPause();
     });
+  }
+
+  destroy(): void {
+    if (this.keydownHandler) {
+      document.removeEventListener('keydown', this.keydownHandler);
+      this.keydownHandler = null;
+    }
   }
 
   private updateProgress(): void {

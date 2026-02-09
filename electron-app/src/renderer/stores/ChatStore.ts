@@ -23,6 +23,7 @@ export class ChatStore {
   };
 
   private listeners: Set<ChatStateListener> = new Set();
+  private ipcCleanups: Array<() => void> = [];
 
   constructor() {
     this.setupIpcListeners();
@@ -31,13 +32,14 @@ export class ChatStore {
 
   private setupIpcListeners(): void {
     // Handle streaming response chunks
-    window.electronAPI.onChatResponseChunk((chunk: string) => {
+    const cleanupChunk = window.electronAPI.onChatResponseChunk((chunk: string) => {
       this.state.currentStreamingContent += chunk;
       this.notify();
     });
+    if (cleanupChunk) this.ipcCleanups.push(cleanupChunk);
 
     // Handle streaming complete
-    window.electronAPI.onChatResponseComplete(() => {
+    const cleanupComplete = window.electronAPI.onChatResponseComplete(() => {
       if (this.state.currentStreamingContent) {
         const assistantMessage: ChatMessage = {
           id: this.generateId(),
@@ -51,9 +53,10 @@ export class ChatStore {
       this.state.currentStreamingContent = '';
       this.notify();
     });
+    if (cleanupComplete) this.ipcCleanups.push(cleanupComplete);
 
     // Handle chat errors
-    window.electronAPI.onChatError((error: string) => {
+    const cleanupError = window.electronAPI.onChatError((error: string) => {
       this.state.isStreaming = false;
       this.state.currentStreamingContent = '';
       // Add error as a system message
@@ -66,6 +69,15 @@ export class ChatStore {
       this.state.messages.push(errorMessage);
       this.notify();
     });
+    if (cleanupError) this.ipcCleanups.push(cleanupError);
+  }
+
+  destroy(): void {
+    for (const cleanup of this.ipcCleanups) {
+      cleanup();
+    }
+    this.ipcCleanups = [];
+    this.listeners.clear();
   }
 
   private async checkApiKeyStatus(): Promise<void> {

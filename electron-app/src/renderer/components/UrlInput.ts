@@ -6,9 +6,11 @@ export class UrlInput {
   private statusText: HTMLElement;
   private player: VideoPlayer;
   private isLoading: boolean = false;
+  private onTitleChange?: (title: string) => void;
 
-  constructor(player: VideoPlayer) {
+  constructor(player: VideoPlayer, onTitleChange?: (title: string) => void) {
     this.player = player;
+    this.onTitleChange = onTitleChange;
     this.input = document.getElementById('url-input') as HTMLInputElement;
     this.loadBtn = document.getElementById('load-btn') as HTMLButtonElement;
     this.statusText = document.getElementById('status-text') as HTMLElement;
@@ -71,15 +73,8 @@ export class UrlInput {
         this.player.loadVideo(result.videoUrl);
 
         // Update title bar if title is available
-        if (result.title) {
-          const titleText = document.querySelector('.title-text') as HTMLElement;
-          if (titleText) {
-            const maxLen = 30;
-            titleText.textContent = result.title.length > maxLen
-              ? result.title.substring(0, maxLen) + '...'
-              : result.title;
-            titleText.title = result.title;
-          }
+        if (result.title && this.onTitleChange) {
+          this.onTitleChange(result.title);
         }
       } else {
         this.showError(result.error || 'Failed to extract video');

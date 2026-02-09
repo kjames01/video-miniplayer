@@ -64,9 +64,8 @@ export class GeminiService {
           const encrypted = safeStorage.encryptString(this.settings.apiKey);
           toSave.encryptedApiKey = encrypted.toString('base64');
         } else {
-          // Fall back to plaintext (not recommended, but functional)
-          console.warn('[GeminiService] Encryption not available, storing API key in plaintext');
-          toSave.apiKey = this.settings.apiKey;
+          console.error('[GeminiService] Encryption not available, refusing to store API key in plaintext');
+          return;
         }
       }
 

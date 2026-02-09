@@ -1,13 +1,12 @@
 import * as http from 'http';
 import { BrowserWindow } from 'electron';
-import { HTTP_PORT, HTTP_ENDPOINTS, IPC_CHANNELS } from '../shared/types';
+import { HTTP_ENDPOINTS, IPC_CHANNELS } from '../shared/types';
+import { HTTP_PORT, MAX_BODY_SIZE, REQUEST_TIMEOUT_MS } from '../shared/constants';
 
 // Security constants
-const MAX_BODY_SIZE = 10 * 1024; // 10KB limit
 const MAX_URL_LENGTH = 2048;
 const MAX_TITLE_LENGTH = 200;
 const ALLOWED_PROTOCOLS = ['http:', 'https:'];
-const REQUEST_TIMEOUT_MS = 5000;
 
 /**
  * Validates a URL for security
@@ -66,9 +65,8 @@ export class LocalServer {
       const origin = req.headers.origin || '';
       if (origin.startsWith('chrome-extension://') || origin.startsWith('moz-extension://')) {
         res.setHeader('Access-Control-Allow-Origin', origin);
-      } else {
-        // Allow requests without origin (direct curl/fetch from localhost)
-        res.setHeader('Access-Control-Allow-Origin', 'null');
+      } else if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
       }
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -92,15 +90,18 @@ export class LocalServer {
         let destroyed = false;
 
         req.on('data', (chunk) => {
-          body += chunk.toString();
+          const chunkStr = chunk.toString();
 
-          // Prevent memory exhaustion - limit request body size
-          if (body.length > MAX_BODY_SIZE) {
+          // Prevent memory exhaustion - check before appending
+          if (body.length + chunkStr.length > MAX_BODY_SIZE) {
             destroyed = true;
             req.destroy();
             res.writeHead(413, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Request body too large' }));
+            return;
           }
+
+          body += chunkStr;
         });
 
         req.on('end', () => {
@@ -140,13 +141,17 @@ export class LocalServer {
       res.end(JSON.stringify({ error: 'Not found' }));
     });
 
-    this.server.listen(HTTP_PORT, '127.0.0.1');
+    this.server.listen(HTTP_PORT, '127.0.0.1', () => {
+      console.log(`[LocalServer] Listening on ${HTTP_PORT}`);
+    });
 
     this.server.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
-        console.error(`Port ${HTTP_PORT} is already in use`);
+        console.error(`[LocalServer] Port ${HTTP_PORT} is already in use. Another instance may be running.`);
+        // Surface to renderer so user knows the server failed
+        this.mainWindow.webContents.send(IPC_CHANNELS.EXTRACTION_ERROR, `Port ${HTTP_PORT} is already in use`);
       } else {
-        console.error('Server error:', err);
+        console.error('[LocalServer] Server error:', err);
       }
     });
   }

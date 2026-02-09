@@ -60,11 +60,19 @@ describe('LocalServer', () => {
       expect(data.status).toBe('ok');
     });
 
-    it('should include CORS headers', async () => {
+    it('should not include CORS header for non-extension origins', async () => {
       const response = await fetch(`${baseUrl}/ping`);
 
-      // Without an extension origin header, CORS returns 'null'
-      expect(response.headers.get('access-control-allow-origin')).toBe('null');
+      // Without a recognized origin, no CORS header is set
+      expect(response.headers.get('access-control-allow-origin')).toBeNull();
+    });
+
+    it('should include CORS header for localhost origins', async () => {
+      const response = await fetch(`${baseUrl}/ping`, {
+        headers: { 'Origin': 'http://localhost:3000' }
+      });
+
+      expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:3000');
     });
 
     it('should allow chrome extension origins', async () => {

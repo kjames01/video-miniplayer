@@ -8,10 +8,21 @@ export class VideoPlayer {
   private videoLoadCallbacks: VideoLoadCallback[] = [];
 
   constructor() {
-    this.video = document.getElementById('video-player') as HTMLVideoElement;
-    this.placeholder = document.getElementById('placeholder') as HTMLElement;
-    this.loadingOverlay = document.getElementById('loading-overlay') as HTMLElement;
-    this.videoContainer = document.getElementById('video-container') as HTMLElement;
+    const video = document.getElementById('video-player');
+    if (!video) throw new Error('Missing required element: #video-player');
+    this.video = video as HTMLVideoElement;
+
+    const placeholder = document.getElementById('placeholder');
+    if (!placeholder) throw new Error('Missing required element: #placeholder');
+    this.placeholder = placeholder;
+
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (!loadingOverlay) throw new Error('Missing required element: #loading-overlay');
+    this.loadingOverlay = loadingOverlay;
+
+    const videoContainer = document.getElementById('video-container');
+    if (!videoContainer) throw new Error('Missing required element: #video-container');
+    this.videoContainer = videoContainer;
 
     this.setupEventListeners();
   }
@@ -65,10 +76,17 @@ export class VideoPlayer {
   }
 
   /**
-   * Register a callback to be called when a video is loaded
+   * Register a callback to be called when a video is loaded.
+   * Returns an unsubscribe function.
    */
-  onVideoLoad(callback: VideoLoadCallback): void {
+  onVideoLoad(callback: VideoLoadCallback): () => void {
     this.videoLoadCallbacks.push(callback);
+    return () => {
+      const index = this.videoLoadCallbacks.indexOf(callback);
+      if (index !== -1) {
+        this.videoLoadCallbacks.splice(index, 1);
+      }
+    };
   }
 
   play(): void {

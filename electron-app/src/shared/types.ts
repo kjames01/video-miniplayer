@@ -89,4 +89,5 @@ export const HTTP_ENDPOINTS = {
   PING: '/ping',
 } as const;
 
-export const HTTP_PORT = 9527;
+// Re-exported from constants for backwards compatibility
+export { HTTP_PORT } from './constants';

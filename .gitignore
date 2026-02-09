@@ -26,6 +26,16 @@ npm-debug.log*
 # Test coverage
 coverage/
 
+# TypeScript build info
+*.tsbuildinfo
+
+# Playwright
+playwright-report/
+test-results/
+
+# ESLint
+.eslintcache
+
 # Temporary files
 *.tmp
 *.temp

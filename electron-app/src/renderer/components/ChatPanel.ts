@@ -111,7 +111,7 @@ export class ChatPanel {
     document.getElementById('gemini-link')?.addEventListener('click', (e) => {
       e.preventDefault();
       // Open in default browser via shell
-      window.open('https://aistudio.google.com/app/apikey', '_blank');
+      window.open('https://aistudio.google.com/app/apikey', '_blank', 'noopener,noreferrer');
     });
   }
 
@@ -165,37 +165,48 @@ export class ChatPanel {
   private updateMessages(messages: ChatMessage[], streamingContent: string, isStreaming: boolean): void {
     if (!this.messagesContainer) return;
 
-    // Build messages HTML
-    let html = '';
+    // Clear and rebuild using safe DOM construction
+    this.messagesContainer.innerHTML = '';
 
     for (const msg of messages) {
       const isUser = msg.role === 'user';
       const isError = msg.content.startsWith('Error:');
-      html += `
-        <div class="chat-message ${isUser ? 'user-message' : 'assistant-message'} ${isError ? 'error-message' : ''}">
-          <div class="message-content">${this.escapeHtml(msg.content)}</div>
-        </div>
-      `;
+
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `chat-message ${isUser ? 'user-message' : 'assistant-message'}${isError ? ' error-message' : ''}`;
+
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'message-content';
+      contentDiv.textContent = msg.content;
+
+      messageDiv.appendChild(contentDiv);
+      this.messagesContainer.appendChild(messageDiv);
     }
 
     // Add streaming message if in progress
     if (isStreaming && streamingContent) {
-      html += `
-        <div class="chat-message assistant-message streaming">
-          <div class="message-content">${this.escapeHtml(streamingContent)}</div>
-        </div>
-      `;
-    } else if (isStreaming) {
-      html += `
-        <div class="chat-message assistant-message streaming">
-          <div class="message-content typing-indicator">
-            <span></span><span></span><span></span>
-          </div>
-        </div>
-      `;
-    }
+      const streamDiv = document.createElement('div');
+      streamDiv.className = 'chat-message assistant-message streaming';
 
-    this.messagesContainer.innerHTML = html;
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'message-content';
+      contentDiv.textContent = streamingContent;
+
+      streamDiv.appendChild(contentDiv);
+      this.messagesContainer.appendChild(streamDiv);
+    } else if (isStreaming) {
+      const streamDiv = document.createElement('div');
+      streamDiv.className = 'chat-message assistant-message streaming';
+
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'message-content typing-indicator';
+      contentDiv.appendChild(document.createElement('span'));
+      contentDiv.appendChild(document.createElement('span'));
+      contentDiv.appendChild(document.createElement('span'));
+
+      streamDiv.appendChild(contentDiv);
+      this.messagesContainer.appendChild(streamDiv);
+    }
 
     // Scroll to bottom
     this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
@@ -240,15 +251,11 @@ export class ChatPanel {
     if (!input) return;
 
     const apiKey = input.value.trim();
+    if (!apiKey) return;
+
     await this.store.saveApiKey(apiKey);
     input.value = '';
     this.settingsPanel?.classList.add('hidden');
-  }
-
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   }
 
   /**

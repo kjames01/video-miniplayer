@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
 import { WindowManager } from './windowManager';
-import { setupIpcHandlers } from './ipcHandlers';
+import { setupIpcHandlers, getYtdlpManager, getUrlCache } from './ipcHandlers';
 import { TrayManager } from './trayManager';
 import { LocalServer } from './localServer';
 
@@ -10,12 +10,12 @@ console.log('[Main] Starting app...');
 let windowManager: WindowManager | null = null;
 let trayManager: TrayManager | null = null;
 let localServer: LocalServer | null = null;
+let cacheCleanupInterval: ReturnType<typeof setInterval> | null = null;
 
 // Skip single instance lock in test mode
 const isTestMode = process.env.NODE_ENV === 'test';
 console.log('[Main] isTestMode:', isTestMode);
-// Temporarily bypass lock for testing - remove this later
-const gotTheLock = true; // isTestMode || app.requestSingleInstanceLock();
+const gotTheLock = isTestMode || app.requestSingleInstanceLock();
 console.log('[Main] gotTheLock:', gotTheLock);
 
 if (!gotTheLock) {
@@ -51,6 +51,11 @@ if (!gotTheLock) {
     localServer = new LocalServer(mainWindow);
     localServer.start();
 
+    // Periodic cache cleanup every 60 minutes
+    cacheCleanupInterval = setInterval(() => {
+      getUrlCache()?.cleanup();
+    }, 60 * 60 * 1000);
+
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         windowManager?.createWindow();
@@ -65,5 +70,10 @@ if (!gotTheLock) {
 
   app.on('before-quit', () => {
     localServer?.stop();
+    getYtdlpManager()?.killAll();
+    if (cacheCleanupInterval) {
+      clearInterval(cacheCleanupInterval);
+      cacheCleanupInterval = null;
+    }
   });
 }

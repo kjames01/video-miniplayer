@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import { app } from 'electron';
 import { ExtractResult } from '../shared/types';
 
@@ -47,7 +47,7 @@ const ALLOWED_PROTOCOLS = ['http:', 'https:'];
 const MAX_URL_LENGTH = 2048;
 
 // Characters that could be used for shell injection
-const DANGEROUS_CHARS_PATTERN = /[;&|`$(){}[\]<>\\'"!#]/;
+const DANGEROUS_CHARS_PATTERN = /[;&|`$(){}[\]<>\\'"]/;
 
 function validateUrl(url: string): { valid: boolean; error?: string } {
   // Check type and length
@@ -80,9 +80,21 @@ function validateUrl(url: string): { valid: boolean; error?: string } {
 export class YtdlpManager {
   private ytdlpPath: string;
   private lastSubtitles: SubtitleInfo[] = [];
+  private activeProcesses: Set<ChildProcess> = new Set();
 
   constructor() {
     this.ytdlpPath = getYtdlpPath();
+  }
+
+  killAll(): void {
+    for (const proc of this.activeProcesses) {
+      try {
+        proc.kill();
+      } catch {
+        // Process may already be dead
+      }
+    }
+    this.activeProcesses.clear();
   }
 
   getLastSubtitles(): SubtitleInfo[] {
@@ -162,9 +174,18 @@ export class YtdlpManager {
       ];
 
       const proc = spawn(this.ytdlpPath, args, {
-        windowsHide: true,
-        timeout: 30000
+        windowsHide: true
       });
+
+      this.activeProcesses.add(proc);
+
+      const timeoutId = setTimeout(() => {
+        try {
+          proc.kill();
+        } catch {
+          // Process may already be dead
+        }
+      }, 30000);
 
       let stdout = '';
       let stderr = '';
@@ -178,11 +199,15 @@ export class YtdlpManager {
       });
 
       proc.on('error', (err) => {
+        clearTimeout(timeoutId);
+        this.activeProcesses.delete(proc);
         console.error('[YtdlpManager] Spawn error:', err.message);
         resolve({ success: false, error: `Failed to run yt-dlp: ${err.message}` });
       });
 
       proc.on('close', (code) => {
+        clearTimeout(timeoutId);
+        this.activeProcesses.delete(proc);
         if (code !== 0) {
           console.error('[YtdlpManager] yt-dlp exited with code:', code);
           console.error('[YtdlpManager] stderr:', stderr);

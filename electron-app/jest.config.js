@@ -21,6 +21,30 @@ module.exports = {
       branches: 80,
       functions: 85,
       lines: 90
+    },
+    './src/main/ytdlpManager.ts': {
+      statements: 80,
+      branches: 70,
+      functions: 80,
+      lines: 80
+    },
+    './src/main/ipcHandlers.ts': {
+      statements: 80,
+      branches: 70,
+      functions: 80,
+      lines: 80
+    },
+    './src/main/geminiService.ts': {
+      statements: 70,
+      branches: 60,
+      functions: 70,
+      lines: 70
+    },
+    './src/main/windowManager.ts': {
+      statements: 70,
+      branches: 60,
+      functions: 70,
+      lines: 70
     }
   },
   moduleFileExtensions: ['ts', 'js', 'json'],

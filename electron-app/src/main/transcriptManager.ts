@@ -1,8 +1,9 @@
 import { net } from 'electron';
 import { TranscriptSegment, TranscriptResult } from '../shared/types';
 import { SubtitleInfo } from './ytdlpManager';
+import { CACHE_DURATION_MS } from '../shared/constants';
 
-const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+const TRANSCRIPT_REQUEST_TIMEOUT_MS = 10000;
 
 interface CachedTranscript {
   result: TranscriptResult;
@@ -18,7 +19,7 @@ export class TranscriptManager {
   async fetchTranscript(subtitleInfo: SubtitleInfo): Promise<TranscriptResult> {
     // Check cache first
     const cached = this.cache.get(subtitleInfo.url);
-    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION_MS) {
       return cached.result;
     }
 
@@ -58,12 +59,26 @@ export class TranscriptManager {
    */
   private fetchUrl(url: string): Promise<string> {
     return new Promise((resolve, reject) => {
+      let settled = false;
       const request = net.request(url);
       let data = '';
 
+      const timeout = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          request.abort();
+          reject(new Error('Transcript request timed out'));
+        }
+      }, TRANSCRIPT_REQUEST_TIMEOUT_MS);
+
       request.on('response', (response) => {
+        clearTimeout(timeout);
+
         if (response.statusCode !== 200) {
-          reject(new Error(`HTTP ${response.statusCode}`));
+          if (!settled) {
+            settled = true;
+            reject(new Error(`HTTP ${response.statusCode}`));
+          }
           return;
         }
 
@@ -72,16 +87,26 @@ export class TranscriptManager {
         });
 
         response.on('end', () => {
-          resolve(data);
+          if (!settled) {
+            settled = true;
+            resolve(data);
+          }
         });
 
         response.on('error', (error: Error) => {
-          reject(error);
+          if (!settled) {
+            settled = true;
+            reject(error);
+          }
         });
       });
 
       request.on('error', (error) => {
-        reject(error);
+        clearTimeout(timeout);
+        if (!settled) {
+          settled = true;
+          reject(error);
+        }
       });
 
       request.end();
@@ -122,16 +147,16 @@ export class TranscriptManager {
 
         // Parse start time
         const startHours = timestampMatch[1] ? parseInt(timestampMatch[1]) : 0;
-        const startMins = parseInt(timestampMatch[2]);
-        const startSecs = parseInt(timestampMatch[3]);
-        const startMs = parseInt(timestampMatch[4]);
+        const startMins = parseInt(timestampMatch[2]!);
+        const startSecs = parseInt(timestampMatch[3]!);
+        const startMs = parseInt(timestampMatch[4]!);
         const start = startHours * 3600 + startMins * 60 + startSecs + startMs / 1000;
 
         // Parse end time
         const endHours = timestampMatch[5] ? parseInt(timestampMatch[5]) : 0;
-        const endMins = parseInt(timestampMatch[6]);
-        const endSecs = parseInt(timestampMatch[7]);
-        const endMs = parseInt(timestampMatch[8]);
+        const endMins = parseInt(timestampMatch[6]!);
+        const endSecs = parseInt(timestampMatch[7]!);
+        const endMs = parseInt(timestampMatch[8]!);
         const end = endHours * 3600 + endMins * 60 + endSecs + endMs / 1000;
 
         currentSegment = { start, end };
@@ -210,7 +235,7 @@ export class TranscriptManager {
   cleanup(): void {
     const now = Date.now();
     for (const [key, entry] of this.cache.entries()) {
-      if (now - entry.timestamp > CACHE_DURATION) {
+      if (now - entry.timestamp > CACHE_DURATION_MS) {
         this.cache.delete(key);
       }
     }

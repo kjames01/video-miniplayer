@@ -86,6 +86,14 @@ function validateSettings(newSettings: unknown): Partial<AppSettings> {
   return validated;
 }
 
+export function getYtdlpManager(): YtdlpManager | null {
+  return ytdlpManager;
+}
+
+export function getUrlCache(): UrlCache | null {
+  return urlCache;
+}
+
 export function setupIpcHandlers(windowManager: WindowManager): void {
   ytdlpManager = new YtdlpManager();
   urlCache = new UrlCache();
@@ -184,7 +192,7 @@ export function setupIpcHandlers(windowManager: WindowManager): void {
     }
 
     // Use the first available subtitle
-    const result = await transcriptManager.fetchTranscript(subtitles[0]);
+    const result = await transcriptManager.fetchTranscript(subtitles[0]!);
     if (result.success) {
       lastTranscript = result;
     }
@@ -266,6 +274,10 @@ export function setupIpcHandlers(windowManager: WindowManager): void {
 
 function isDirectVideoUrl(url: string): boolean {
   const videoExtensions = ['.mp4', '.webm', '.ogg', '.m3u8', '.mpd'];
-  const lowerUrl = url.toLowerCase();
-  return videoExtensions.some(ext => lowerUrl.includes(ext));
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    return videoExtensions.some(ext => pathname.endsWith(ext));
+  } catch {
+    return false;
+  }
 }
