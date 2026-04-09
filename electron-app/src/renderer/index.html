@@ -3,72 +3,47 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src * blob: data:; connect-src 'self' https://generativelanguage.googleapis.com;">
-  <title>Video Miniplayer</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';">
+  <title>Window Manager</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div id="app">
     <!-- Title Bar -->
     <div id="title-bar">
-      <div class="title-text">Video Miniplayer</div>
+      <div class="title-text">Window Manager</div>
       <div class="window-controls">
-        <button id="chat-toggle-btn" class="control-btn" title="Toggle Chat (Ctrl+Shift+C)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-          </svg>
-        </button>
-        <button id="pin-btn" class="control-btn" title="Always on Top">📌</button>
-        <button id="minimize-btn" class="control-btn" title="Minimize">─</button>
-        <button id="close-btn" class="control-btn close" title="Close">✕</button>
+        <button id="refresh-btn" class="control-btn" title="Refresh (F5)">&#x21bb;</button>
+        <button id="pin-btn" class="control-btn" title="Always on Top">&#x1F4CC;</button>
+        <button id="minimize-btn" class="control-btn" title="Minimize">&#x2500;</button>
+        <button id="close-btn" class="control-btn close" title="Close">&#x2715;</button>
       </div>
     </div>
 
-    <!-- URL Input Section -->
-    <div id="url-section">
-      <div class="url-input-wrapper">
-        <input type="text" id="url-input" placeholder="Paste video URL here..." autocomplete="off">
-        <button id="load-btn">▶</button>
-      </div>
-      <div id="status-text"></div>
+    <!-- Search & Count -->
+    <div id="toolbar">
+      <input type="text" id="search-input" placeholder="Filter windows..." autocomplete="off">
+      <span id="window-count">0 windows</span>
     </div>
 
-    <!-- Video Container -->
-    <div id="video-container">
-      <video id="video-player" playsinline>
-        Your browser does not support video playback.
-      </video>
+    <!-- Window List -->
+    <div id="window-list"></div>
 
-      <!-- Video Controls -->
-      <div id="video-controls">
-        <button id="play-pause-btn" class="ctrl-btn">▶</button>
-        <div id="progress-container">
-          <div id="progress-bar">
-            <div id="progress-filled"></div>
-          </div>
-          <span id="time-display">0:00 / 0:00</span>
-        </div>
-        <div id="volume-container">
-          <button id="mute-btn" class="ctrl-btn">🔊</button>
-          <input type="range" id="volume-slider" min="0" max="100" value="100">
-        </div>
+    <!-- Resize Panel -->
+    <div id="resize-panel" class="hidden">
+      <div class="panel-header">
+        <span id="selected-window-title">Window Title</span>
+        <button id="close-panel-btn" class="panel-close">&#x2715;</button>
       </div>
-
-      <!-- Loading Overlay -->
-      <div id="loading-overlay" class="hidden">
-        <div class="spinner"></div>
-        <span>Loading video...</span>
-      </div>
-
-      <!-- Placeholder when no video -->
-      <div id="placeholder">
-        <div class="placeholder-icon">🎬</div>
-        <div class="placeholder-text">Paste a video URL to start</div>
+      <div id="current-size"></div>
+      <div class="resize-presets" id="resize-presets"></div>
+      <div class="custom-resize">
+        <input type="number" id="custom-width" placeholder="Width" min="100" max="7680">
+        <span class="resize-x">x</span>
+        <input type="number" id="custom-height" placeholder="Height" min="50" max="4320">
+        <button id="apply-resize-btn">Apply</button>
       </div>
     </div>
-
-    <!-- Chat Panel -->
-    <div id="chat-panel"></div>
   </div>
 
   <script src="renderer.js"></script>

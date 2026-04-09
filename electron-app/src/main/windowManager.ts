@@ -6,13 +6,11 @@ export class WindowManager {
   private isAlwaysOnTop: boolean = true;
 
   createWindow(): BrowserWindow {
-    // Get primary display for positioning
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
 
-    // Default window size
-    const windowWidth = 400;
-    const windowHeight = 280;
+    const windowWidth = 420;
+    const windowHeight = 520;
 
     // Position in bottom-right corner
     const x = screenWidth - windowWidth - 20;
@@ -23,8 +21,8 @@ export class WindowManager {
       height: windowHeight,
       x,
       y,
-      minWidth: 320,
-      minHeight: 200,
+      minWidth: 360,
+      minHeight: 400,
       frame: false,
       transparent: false,
       alwaysOnTop: this.isAlwaysOnTop,
@@ -40,13 +38,7 @@ export class WindowManager {
       },
     });
 
-    // Load the renderer HTML
     this.mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
-
-    // Uncomment to open DevTools in development for debugging
-    // if (!app.isPackaged) {
-    //   this.mainWindow.webContents.openDevTools({ mode: 'detach' });
-    // }
 
     // Handle window close - hide to tray instead
     this.mainWindow.on('close', (event) => {
@@ -59,6 +51,11 @@ export class WindowManager {
 
   getWindow(): BrowserWindow | null {
     return this.mainWindow;
+  }
+
+  getNativeHandle(): Buffer {
+    if (!this.mainWindow) return Buffer.alloc(0);
+    return this.mainWindow.getNativeWindowHandle();
   }
 
   minimize(): void {

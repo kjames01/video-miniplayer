@@ -48,7 +48,14 @@ export const Menu = {
 };
 
 export const nativeImage = {
-  createFromPath: jest.fn().mockReturnValue({})
+  createFromPath: jest.fn().mockReturnValue({}),
+  createFromDataURL: jest.fn().mockReturnValue({})
+};
+
+export const screen = {
+  getPrimaryDisplay: jest.fn().mockReturnValue({
+    workAreaSize: { width: 1920, height: 1080 }
+  })
 };
 
 export const contextBridge = {

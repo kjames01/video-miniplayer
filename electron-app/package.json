@@ -1,9 +1,9 @@
 {
-  "name": "video-miniplayer",
+  "name": "window-manager",
   "version": "1.0.0",
-  "description": "Floating video miniplayer for Windows",
+  "description": "Desktop window manager utility for Windows - pin and resize application windows",
   "main": "dist/main/main.js",
-  "author": "Video Miniplayer",
+  "author": "Window Manager",
   "license": "MIT",
   "scripts": {
     "copy-assets": "node -e \"const fs=require('fs');const path=require('path');['index.html','styles.css'].forEach(f=>fs.copyFileSync(path.join('src/renderer',f),path.join('dist/renderer',f)))\"",
@@ -34,12 +34,11 @@
     "typescript": "^5.3.0"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
-    "youtube-dl-exec": "^3.0.0"
+    "koffi": "^2.9.0"
   },
   "build": {
-    "appId": "com.miniplayer.video",
-    "productName": "Video Miniplayer",
+    "appId": "com.windowmanager.app",
+    "productName": "Window Manager",
     "directories": {
       "output": "release"
     },
@@ -47,11 +46,8 @@
       "target": "nsis",
       "icon": "resources/icons/icon.ico"
     },
-    "extraResources": [
-      {
-        "from": "resources/bin/win",
-        "to": "bin"
-      }
+    "asarUnpack": [
+      "node_modules/koffi/**"
     ]
   }
 }
