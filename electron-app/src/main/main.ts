@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import { WindowManager } from './windowManager';
-import { setupIpcHandlers } from './ipcHandlers';
+import { setupIpcHandlers, getWindowService } from './ipcHandlers';
 import { TrayManager } from './trayManager';
 
 console.log('[Main] Starting app...');
@@ -44,5 +44,9 @@ if (!gotTheLock) {
 
   app.on('window-all-closed', () => {
     // Keep running in tray
+  });
+
+  app.on('before-quit', () => {
+    getWindowService()?.unpinAll();
   });
 }
