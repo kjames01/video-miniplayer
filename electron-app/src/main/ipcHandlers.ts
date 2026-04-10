@@ -46,6 +46,11 @@ export function setupIpcHandlers(windowManager: WindowManager): void {
       } else {
         overlayManager!.removeOverlay(hwnd);
       }
+      // Re-assert our window stays on top of pinned windows
+      const win = windowManager.getWindow();
+      if (win && windowManager.isOnTop()) {
+        win.moveTop();
+      }
     }
     return success
       ? { success: true }

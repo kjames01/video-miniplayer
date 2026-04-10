@@ -70,10 +70,12 @@ describe('IPC Handlers', () => {
     // Mock getWindow to return something with getNativeWindowHandle
     (mockWindowManager.getWindow as jest.Mock) = jest.fn().mockReturnValue({
       getNativeWindowHandle: jest.fn().mockReturnValue(Buffer.alloc(8)),
+      moveTop: jest.fn(),
     });
     mockWindowManager.minimize = jest.fn();
     mockWindowManager.destroy = jest.fn();
     mockWindowManager.setAlwaysOnTop = jest.fn();
+    mockWindowManager.isOnTop = jest.fn().mockReturnValue(true);
 
     setupIpcHandlers(mockWindowManager);
   });

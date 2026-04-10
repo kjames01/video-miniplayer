@@ -31,6 +31,7 @@ export const BrowserWindow = jest.fn().mockImplementation(() => ({
   setAlwaysOnTop: jest.fn(),
   getBounds: jest.fn().mockReturnValue({ x: 0, y: 0, width: 400, height: 300 }),
   setBounds: jest.fn(),
+  moveTop: jest.fn(),
   webContents: {
     send: jest.fn(),
     on: jest.fn()
