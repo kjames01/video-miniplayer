@@ -81,6 +81,8 @@ export function setupIpcHandlers(windowManager: WindowManager): void {
   });
 
   ipcMain.on(IPC_CHANNELS.CLOSE_WINDOW, () => {
+    windowService?.unpinAll();
+    overlayManager?.destroy();
     windowManager.destroy();
     app.quit();
   });

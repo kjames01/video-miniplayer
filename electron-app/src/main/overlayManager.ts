@@ -79,6 +79,9 @@ export class OverlayManager {
   }
 
   private updatePositions(): void {
+    // Prevent pinned windows from going fullscreen
+    this.windowService.checkAndPreventFullscreen();
+
     for (const [hwnd, overlay] of this.overlays) {
       if (!this.windowService.isValidWindow(hwnd)) {
         overlay.destroy();
