@@ -5,7 +5,6 @@ import { WindowInfo } from '../shared/types';
 const GWL_STYLE = -16;
 const GWL_EXSTYLE = -20;
 const WS_CAPTION = 0x00C00000;
-const WS_THICKFRAME = 0x00040000;
 const WS_EX_TOPMOST = 0x00000008;
 const WS_EX_TOOLWINDOW = 0x00000080;
 const SWP_NOMOVE = 0x0002;
@@ -14,8 +13,7 @@ const SWP_NOZORDER = 0x0004;
 const SWP_NOACTIVATE = 0x0010;
 const SWP_FRAMECHANGED = 0x0020;
 const MONITOR_DEFAULTTONEAREST = 0x00000002;
-
-// HWND special values — passed as pointers via koffi
+// HWND special values
 const HWND_TOPMOST = -1;
 const HWND_NOTOPMOST = -2;
 
@@ -29,7 +27,7 @@ const EXCLUDED_CLASSES = new Set([
   'DV2ControlHost',
   'MsgrIMEWindowClass',
   'SysShadow',
-  'Button', // Start button
+  'Button',
 ]);
 
 // Define Win32 types and structs
@@ -47,8 +45,9 @@ const MONITORINFO = koffi.struct('MONITORINFO', {
   dwFlags: 'uint32_t',
 });
 
-// Load user32.dll functions
+// Load DLL functions
 const user32 = koffi.load('user32.dll');
+
 
 const EnumWindows = user32.func('bool __stdcall EnumWindows(void *callback, intptr_t lParam)');
 const GetWindowTextW = user32.func('int __stdcall GetWindowTextW(intptr_t hWnd, uint16_t *lpString, int nMaxCount)');
@@ -59,11 +58,12 @@ const SetWindowPos = user32.func('bool __stdcall SetWindowPos(intptr_t hWnd, int
 const GetWindowRect = user32.func('bool __stdcall GetWindowRect(intptr_t hWnd, RECT *lpRect)');
 const IsIconic = user32.func('bool __stdcall IsIconic(intptr_t hWnd)');
 const GetWindowLongW = user32.func('long __stdcall GetWindowLongW(intptr_t hWnd, int nIndex)');
+const SetWindowLongW = user32.func('long __stdcall SetWindowLongW(intptr_t hWnd, int nIndex, long dwNewLong)');
 const GetWindowThreadProcessId = user32.func('uint32_t __stdcall GetWindowThreadProcessId(intptr_t hWnd, uint32_t *lpdwProcessId)');
 const IsWindow = user32.func('bool __stdcall IsWindow(intptr_t hWnd)');
 const SetForegroundWindow = user32.func('bool __stdcall SetForegroundWindow(intptr_t hWnd)');
 const ShowWindow = user32.func('bool __stdcall ShowWindow(intptr_t hWnd, int nCmdShow)');
-const SetWindowLongW = user32.func('long __stdcall SetWindowLongW(intptr_t hWnd, int nIndex, long dwNewLong)');
+const IsZoomed = user32.func('bool __stdcall IsZoomed(intptr_t hWnd)');
 const MonitorFromWindow = user32.func('intptr_t __stdcall MonitorFromWindow(intptr_t hWnd, uint32_t dwFlags)');
 const GetMonitorInfoW = user32.func('bool __stdcall GetMonitorInfoW(intptr_t hMonitor, MONITORINFO *lpmi)');
 
@@ -113,18 +113,22 @@ function getMonitorBounds(hwnd: number): { x: number; y: number; width: number; 
   if (!hMonitor) return null;
 
   const mi = {
-    cbSize: 40, // sizeof(MONITORINFO)
+    cbSize: 40,
     rcMonitor: { left: 0, top: 0, right: 0, bottom: 0 },
     rcWork: { left: 0, top: 0, right: 0, bottom: 0 },
     dwFlags: 0,
   };
   if (!GetMonitorInfoW(hMonitor, mi)) return null;
 
+  const width = mi.rcMonitor.right - mi.rcMonitor.left;
+  const height = mi.rcMonitor.bottom - mi.rcMonitor.top;
+  if (width <= 0 || height <= 0) return null;
+
   return {
     x: mi.rcMonitor.left,
     y: mi.rcMonitor.top,
-    width: mi.rcMonitor.right - mi.rcMonitor.left,
-    height: mi.rcMonitor.bottom - mi.rcMonitor.top,
+    width,
+    height,
   };
 }
 
@@ -138,6 +142,34 @@ function isToolWindow(hwnd: number): boolean {
   return (exStyle & WS_EX_TOOLWINDOW) !== 0;
 }
 
+// Lazy-loaded DWM cloaked check
+let dwmCloakedFn: ((hwnd: number) => boolean) | null = null;
+let dwmInitAttempted = false;
+
+function isCloaked(hwnd: number): boolean {
+  if (!dwmInitAttempted) {
+    dwmInitAttempted = true;
+    try {
+      const dwm = koffi.load('dwmapi.dll');
+      const DwmGetWindowAttribute = dwm.func(
+        'long __stdcall DwmGetWindowAttribute(intptr_t hWnd, uint32_t dwAttribute, int32_t *, uint32_t)'
+      );
+      dwmCloakedFn = (h: number): boolean => {
+        try {
+          const out = [0];
+          const hr = DwmGetWindowAttribute(h, 14, out, 4); // 14 = DWMWA_CLOAKED
+          return hr === 0 && out[0]! !== 0;
+        } catch {
+          return false;
+        }
+      };
+    } catch {
+      dwmCloakedFn = null;
+    }
+  }
+  return dwmCloakedFn ? dwmCloakedFn(hwnd) : false;
+}
+
 interface SavedWindowState {
   bounds: { x: number; y: number; width: number; height: number };
   style: number;
@@ -148,14 +180,22 @@ export class WindowService {
   private pinnedWindows = new Set<number>();
   private savedStates = new Map<number, SavedWindowState>();
 
+  private readHwnd(nativeHandle: Buffer): number {
+    if (nativeHandle.length >= 8) return Number(nativeHandle.readBigUInt64LE(0));
+    if (nativeHandle.length >= 4) return nativeHandle.readUInt32LE(0);
+    return 0;
+  }
+
   setOwnHwnd(nativeHandle: Buffer): void {
-    // Electron's getNativeWindowHandle() returns a Buffer containing the HWND
-    if (nativeHandle.length >= 4) {
-      // Read as pointer-sized value (4 bytes on 32-bit, 8 bytes on 64-bit)
-      this.ownHwnd = nativeHandle.length >= 8
-        ? Number(nativeHandle.readBigUInt64LE(0))
-        : nativeHandle.readUInt32LE(0);
-    }
+    this.ownHwnd = this.readHwnd(nativeHandle);
+  }
+
+  /** Mark a BrowserWindow as a tool window so it's excluded from enumeration. */
+  markAsToolWindow(nativeHandle: Buffer): void {
+    const hwnd = this.readHwnd(nativeHandle);
+    if (!hwnd) return;
+    const exStyle = GetWindowLongW(hwnd, GWL_EXSTYLE);
+    SetWindowLongW(hwnd, GWL_EXSTYLE, exStyle | WS_EX_TOOLWINDOW);
   }
 
   getWindows(): WindowInfo[] {
@@ -171,6 +211,9 @@ export class WindowService {
       // Filter: skip tool windows
       if (isToolWindow(hwnd)) return true;
 
+      // Filter: skip cloaked windows (hidden UWP apps like Settings)
+      if (isCloaked(hwnd)) return true;
+
       // Filter: must have a title
       const title = getWindowText(hwnd);
       if (!title) return true;
@@ -179,17 +222,19 @@ export class WindowService {
       const className = getClassName(hwnd);
       if (EXCLUDED_CLASSES.has(className)) return true;
 
+      const bounds = getWindowBounds(hwnd);
+
       windows.push({
         hwnd,
         title,
         className,
         processId: getProcessId(hwnd),
-        bounds: getWindowBounds(hwnd),
+        bounds,
         isTopmost: isTopmost(hwnd),
         isMinimized: IsIconic(hwnd),
       });
 
-      return true; // continue enumeration
+      return true;
     }, koffi.pointer(EnumWindowsProc));
 
     try {
@@ -205,7 +250,6 @@ export class WindowService {
     if (!IsWindow(hwnd)) return false;
 
     if (topmost) {
-      // Save current state before pinning
       this.savedStates.set(hwnd, {
         bounds: getWindowBounds(hwnd),
         style: getWindowStyle(hwnd),
@@ -230,15 +274,23 @@ export class WindowService {
   resizeWindow(hwnd: number, width: number, height: number): boolean {
     if (!IsWindow(hwnd)) return false;
 
-    // Get current position to preserve it
     const bounds = getWindowBounds(hwnd);
-    return SetWindowPos(hwnd, 0, bounds.x, bounds.y, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
+    const result = SetWindowPos(hwnd, 0, bounds.x, bounds.y, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
+
+    // Update saved state so fullscreen check uses current bounds
+    if (result && this.savedStates.has(hwnd)) {
+      this.savedStates.set(hwnd, {
+        bounds: getWindowBounds(hwnd),
+        style: getWindowStyle(hwnd),
+      });
+    }
+
+    return result;
   }
 
   focusWindow(hwnd: number): boolean {
     if (!IsWindow(hwnd)) return false;
 
-    // Restore if minimized
     if (IsIconic(hwnd)) {
       ShowWindow(hwnd, SW_RESTORE);
     }
@@ -271,10 +323,10 @@ export class WindowService {
       }
     }
     this.pinnedWindows.clear();
+    this.savedStates.clear();
   }
 
   getPinnedCount(): number {
-    // Clean up stale entries
     for (const hwnd of this.pinnedWindows) {
       if (!IsWindow(hwnd)) {
         this.pinnedWindows.delete(hwnd);
@@ -286,8 +338,8 @@ export class WindowService {
 
   /**
    * Check all pinned windows for fullscreen and restore them if detected.
-   * A window is considered fullscreen when it covers the entire monitor
-   * and has lost its caption/border styles.
+   * Continuously updates saved bounds so user can freely move/resize pinned
+   * windows without getting snapped back.
    */
   checkAndPreventFullscreen(): void {
     for (const hwnd of this.pinnedWindows) {
@@ -296,31 +348,39 @@ export class WindowService {
       const saved = this.savedStates.get(hwnd);
       if (!saved) continue;
 
-      const currentStyle = getWindowStyle(hwnd);
       const currentBounds = getWindowBounds(hwnd);
       const monitor = getMonitorBounds(hwnd);
       if (!monitor) continue;
 
-      // Detect fullscreen: window covers the monitor and lost its caption
-      const hadCaption = (saved.style & WS_CAPTION) !== 0;
-      const hasCaption = (currentStyle & WS_CAPTION) !== 0;
+      // Detect fullscreen: window covers the entire monitor
       const coversMonitor =
         currentBounds.x <= monitor.x &&
         currentBounds.y <= monitor.y &&
-        currentBounds.width >= monitor.width &&
-        currentBounds.height >= monitor.height;
+        (currentBounds.x + currentBounds.width) >= (monitor.x + monitor.width) &&
+        (currentBounds.y + currentBounds.height) >= (monitor.y + monitor.height);
 
-      if (coversMonitor && hadCaption && !hasCaption) {
-        // Restore window style (add back caption and thick frame)
+      // Only trigger if the window also lost its caption (title bar).
+      // This distinguishes fullscreen (no caption) from maximize (keeps caption).
+      const currentStyle = getWindowStyle(hwnd);
+      const hadCaption = (saved.style & WS_CAPTION) !== 0;
+      const lostCaption = hadCaption && (currentStyle & WS_CAPTION) === 0;
+
+      if (coversMonitor && lostCaption) {
+        // Restore original window style
         SetWindowLongW(hwnd, GWL_STYLE, saved.style);
 
-        // Restore bounds and apply style change
+        // Restore to last known good bounds and keep pinned on top
         SetWindowPos(
           hwnd, HWND_TOPMOST,
           saved.bounds.x, saved.bounds.y,
           saved.bounds.width, saved.bounds.height,
           SWP_FRAMECHANGED | SWP_NOACTIVATE
         );
+      } else if (!coversMonitor) {
+        // Window is in a normal state — update saved bounds so user
+        // can freely move/resize without getting snapped back
+        saved.bounds = currentBounds;
+        saved.style = currentStyle;
       }
     }
   }

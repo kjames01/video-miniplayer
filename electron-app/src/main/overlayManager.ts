@@ -5,8 +5,76 @@ const BORDER_WIDTH = 3;
 const BORDER_COLOR = '#1db954';
 const UPDATE_INTERVAL_MS = 100;
 
+interface BorderWindows {
+  top: BrowserWindow;
+  bottom: BrowserWindow;
+  left: BrowserWindow;
+  right: BrowserWindow;
+}
+
+function createBar(): BrowserWindow {
+  const bar = new BrowserWindow({
+    width: 1,
+    height: 1,
+    x: -100,
+    y: -100,
+    frame: false,
+    transparent: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    focusable: false,
+    hasShadow: false,
+    show: false,
+    backgroundColor: BORDER_COLOR,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  bar.setIgnoreMouseEvents(true);
+  return bar;
+}
+
+function positionBars(bars: BorderWindows, bounds: { x: number; y: number; width: number; height: number }): void {
+  const b = BORDER_WIDTH;
+  // Top bar
+  bars.top.setBounds({ x: bounds.x - b, y: bounds.y - b, width: bounds.width + b * 2, height: b });
+  // Bottom bar
+  bars.bottom.setBounds({ x: bounds.x - b, y: bounds.y + bounds.height, width: bounds.width + b * 2, height: b });
+  // Left bar
+  bars.left.setBounds({ x: bounds.x - b, y: bounds.y, width: b, height: bounds.height });
+  // Right bar
+  bars.right.setBounds({ x: bounds.x + bounds.width, y: bounds.y, width: b, height: bounds.height });
+}
+
+function showBars(bars: BorderWindows): void {
+  bars.top.showInactive();
+  bars.bottom.showInactive();
+  bars.left.showInactive();
+  bars.right.showInactive();
+}
+
+function hideBars(bars: BorderWindows): void {
+  bars.top.hide();
+  bars.bottom.hide();
+  bars.left.hide();
+  bars.right.hide();
+}
+
+function destroyBars(bars: BorderWindows): void {
+  bars.top.destroy();
+  bars.bottom.destroy();
+  bars.left.destroy();
+  bars.right.destroy();
+}
+
+function barsVisible(bars: BorderWindows): boolean {
+  return bars.top.isVisible();
+}
+
 export class OverlayManager {
-  private overlays = new Map<number, BrowserWindow>();
+  private overlays = new Map<number, BorderWindows>();
   private windowService: WindowService;
   private updateInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -21,53 +89,38 @@ export class OverlayManager {
     const info = this.windowService.getWindowInfo(hwnd);
     if (!info) return;
 
-    const overlay = new BrowserWindow({
-      x: info.bounds.x - BORDER_WIDTH,
-      y: info.bounds.y - BORDER_WIDTH,
-      width: info.bounds.width + BORDER_WIDTH * 2,
-      height: info.bounds.height + BORDER_WIDTH * 2,
-      frame: false,
-      transparent: true,
-      alwaysOnTop: true,
-      skipTaskbar: true,
-      resizable: false,
-      focusable: false,
-      hasShadow: false,
-      show: !info.isMinimized,
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-      },
-    });
+    const bars: BorderWindows = {
+      top: createBar(),
+      bottom: createBar(),
+      left: createBar(),
+      right: createBar(),
+    };
 
-    overlay.setIgnoreMouseEvents(true);
+    // Mark all bars as tool windows so they're excluded from window enumeration
+    this.windowService.markAsToolWindow(bars.top.getNativeWindowHandle());
+    this.windowService.markAsToolWindow(bars.bottom.getNativeWindowHandle());
+    this.windowService.markAsToolWindow(bars.left.getNativeWindowHandle());
+    this.windowService.markAsToolWindow(bars.right.getNativeWindowHandle());
 
-    const html = `<!DOCTYPE html>
-<html><head><style>
-  * { margin: 0; padding: 0; }
-  html, body { width: 100%; height: 100%; background: transparent; overflow: hidden; }
-  .border { position: absolute; inset: 0; border: ${BORDER_WIDTH}px solid ${BORDER_COLOR}; border-radius: 4px; }
-</style></head><body><div class="border"></div></body></html>`;
+    positionBars(bars, info.bounds);
+    if (!info.isMinimized) {
+      showBars(bars);
+    }
 
-    overlay.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-
-    // Prevent overlay from appearing in window list
-    overlay.removeAllListeners('close');
-
-    this.overlays.set(hwnd, overlay);
+    this.overlays.set(hwnd, bars);
   }
 
   removeOverlay(hwnd: number): void {
-    const overlay = this.overlays.get(hwnd);
-    if (overlay) {
-      overlay.destroy();
+    const bars = this.overlays.get(hwnd);
+    if (bars) {
+      destroyBars(bars);
       this.overlays.delete(hwnd);
     }
   }
 
   removeAll(): void {
-    for (const [hwnd, overlay] of this.overlays) {
-      overlay.destroy();
+    for (const [, bars] of this.overlays) {
+      destroyBars(bars);
     }
     this.overlays.clear();
   }
@@ -82,9 +135,9 @@ export class OverlayManager {
     // Prevent pinned windows from going fullscreen
     this.windowService.checkAndPreventFullscreen();
 
-    for (const [hwnd, overlay] of this.overlays) {
+    for (const [hwnd, bars] of this.overlays) {
       if (!this.windowService.isValidWindow(hwnd)) {
-        overlay.destroy();
+        destroyBars(bars);
         this.overlays.delete(hwnd);
         continue;
       }
@@ -93,28 +146,13 @@ export class OverlayManager {
       if (!info) continue;
 
       if (info.isMinimized) {
-        if (overlay.isVisible()) overlay.hide();
+        if (barsVisible(bars)) hideBars(bars);
         continue;
       }
 
-      if (!overlay.isVisible()) overlay.show();
+      if (!barsVisible(bars)) showBars(bars);
 
-      const targetBounds = {
-        x: info.bounds.x - BORDER_WIDTH,
-        y: info.bounds.y - BORDER_WIDTH,
-        width: info.bounds.width + BORDER_WIDTH * 2,
-        height: info.bounds.height + BORDER_WIDTH * 2,
-      };
-
-      const current = overlay.getBounds();
-      if (
-        current.x !== targetBounds.x ||
-        current.y !== targetBounds.y ||
-        current.width !== targetBounds.width ||
-        current.height !== targetBounds.height
-      ) {
-        overlay.setBounds(targetBounds);
-      }
+      positionBars(bars, info.bounds);
     }
   }
 
