@@ -1,6 +1,6 @@
 import { Tray, Menu, app, nativeImage } from 'electron';
 import { WindowManager } from './windowManager';
-import { getWindowService } from './ipcHandlers';
+import { getWindowService, getOverlayManager } from './ipcHandlers';
 
 export class TrayManager {
   private tray: Tray | null = null;
@@ -39,6 +39,7 @@ export class TrayManager {
         label: 'Unpin All Windows',
         click: () => {
           getWindowService()?.unpinAll();
+          getOverlayManager()?.removeAll();
         },
       },
       { type: 'separator' },
@@ -46,6 +47,7 @@ export class TrayManager {
         label: 'Quit',
         click: () => {
           getWindowService()?.unpinAll();
+          getOverlayManager()?.destroy();
           this.windowManager.destroy();
           app.quit();
         },

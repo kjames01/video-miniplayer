@@ -22,8 +22,30 @@ jest.mock('../windowService', () => {
       setTopmost: jest.fn().mockReturnValue(true),
       resizeWindow: jest.fn().mockReturnValue(true),
       focusWindow: jest.fn().mockReturnValue(true),
+      getWindowInfo: jest.fn().mockReturnValue({
+        hwnd: 12345,
+        title: 'Test Window',
+        className: 'TestClass',
+        processId: 100,
+        bounds: { x: 0, y: 0, width: 800, height: 600 },
+        isTopmost: false,
+        isMinimized: false,
+      }),
+      isValidWindow: jest.fn().mockReturnValue(true),
       unpinAll: jest.fn(),
       getPinnedCount: jest.fn().mockReturnValue(0),
+    })),
+  };
+});
+
+// Mock OverlayManager to avoid creating real BrowserWindows in tests
+jest.mock('../overlayManager', () => {
+  return {
+    OverlayManager: jest.fn().mockImplementation(() => ({
+      addOverlay: jest.fn(),
+      removeOverlay: jest.fn(),
+      removeAll: jest.fn(),
+      destroy: jest.fn(),
     })),
   };
 });

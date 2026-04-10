@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import { WindowManager } from './windowManager';
-import { setupIpcHandlers, getWindowService } from './ipcHandlers';
+import { setupIpcHandlers, getWindowService, getOverlayManager } from './ipcHandlers';
 import { TrayManager } from './trayManager';
 
 console.log('[Main] Starting app...');
@@ -47,6 +47,7 @@ if (!gotTheLock) {
   });
 
   app.on('before-quit', () => {
+    getOverlayManager()?.destroy();
     getWindowService()?.unpinAll();
   });
 }

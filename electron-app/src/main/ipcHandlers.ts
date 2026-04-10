@@ -3,8 +3,10 @@ import { IPC_CHANNELS, AppSettings, WindowActionResult, WindowInfo } from '../sh
 import { MIN_RESIZE_WIDTH, MIN_RESIZE_HEIGHT, MAX_RESIZE_WIDTH, MAX_RESIZE_HEIGHT } from '../shared/constants';
 import { WindowManager } from './windowManager';
 import { WindowService } from './windowService';
+import { OverlayManager } from './overlayManager';
 
 let windowService: WindowService | null = null;
+let overlayManager: OverlayManager | null = null;
 let settings: AppSettings = {
   alwaysOnTop: true,
 };
@@ -13,8 +15,13 @@ export function getWindowService(): WindowService | null {
   return windowService;
 }
 
+export function getOverlayManager(): OverlayManager | null {
+  return overlayManager;
+}
+
 export function setupIpcHandlers(windowManager: WindowManager): void {
   windowService = new WindowService();
+  overlayManager = new OverlayManager(windowService);
 
   // Set own HWND so WindowService can exclude our window from enumeration
   const win = windowManager.getWindow();
@@ -33,6 +40,13 @@ export function setupIpcHandlers(windowManager: WindowManager): void {
       return { success: false, error: 'Invalid parameters' };
     }
     const success = windowService!.setTopmost(hwnd, topmost);
+    if (success) {
+      if (topmost) {
+        overlayManager!.addOverlay(hwnd);
+      } else {
+        overlayManager!.removeOverlay(hwnd);
+      }
+    }
     return success
       ? { success: true }
       : { success: false, error: 'Failed to modify window. It may be elevated or closed.' };
