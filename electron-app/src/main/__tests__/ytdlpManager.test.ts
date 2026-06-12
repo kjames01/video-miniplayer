@@ -1,0 +1,159 @@
+import { EventEmitter } from 'events';
+import { spawn } from 'child_process';
+import { YtdlpManager } from '../ytdlpManager';
+
+jest.mock('child_process');
+const mockedSpawn = spawn as jest.MockedFunction<typeof spawn>;
+
+class FakeProc extends EventEmitter {
+  stdout = new EventEmitter();
+  stderr = new EventEmitter();
+  kill = jest.fn();
+}
+
+let lastProc: FakeProc;
+
+beforeEach(() => {
+  mockedSpawn.mockImplementation(() => {
+    lastProc = new FakeProc();
+    return lastProc as unknown as ReturnType<typeof spawn>;
+  });
+});
+
+/**
+ * Drive a fake yt-dlp run: feed stdout JSON then close with the given code.
+ */
+function runWithOutput(output: unknown, code = 0): void {
+  lastProc.stdout.emit('data', Buffer.from(JSON.stringify(output)));
+  lastProc.emit('close', code);
+}
+
+describe('YtdlpManager.extract', () => {
+  describe('URL validation (no spawn)', () => {
+    it.each([
+      ['', 'empty'],
+      ['not-a-url', 'malformed'],
+      ['ftp://example.com/v', 'disallowed protocol'],
+      ['https://example.com/\nvideo', 'control character'],
+    ])('rejects %s (%s) without spawning', async (url) => {
+      const manager = new YtdlpManager();
+      const result = await manager.extract(url);
+
+      expect(result.success).toBe(false);
+      expect(mockedSpawn).not.toHaveBeenCalled();
+    });
+
+    it('rejects a URL exceeding the max length', async () => {
+      const manager = new YtdlpManager();
+      const longUrl = 'https://example.com/' + 'a'.repeat(2100);
+
+      const result = await manager.extract(longUrl);
+
+      expect(result.success).toBe(false);
+      expect(mockedSpawn).not.toHaveBeenCalled();
+    });
+  });
+
+  it('resolves with the top-level url when present', async () => {
+    const manager = new YtdlpManager();
+    const promise = manager.extract('https://example.com/v');
+    runWithOutput({ url: 'https://media/v.mp4', title: 'My Video' });
+
+    await expect(promise).resolves.toEqual({
+      success: true,
+      videoUrl: 'https://media/v.mp4',
+      title: 'My Video',
+    });
+  });
+
+  it('falls back to requested_formats when there is no top-level url', async () => {
+    const manager = new YtdlpManager();
+    const promise = manager.extract('https://example.com/v');
+    runWithOutput({
+      title: 'Req',
+      requested_formats: [
+        { url: 'https://media/audio.m4a', acodec: 'aac', vcodec: 'none' },
+        { url: 'https://media/video.mp4', vcodec: 'h264' },
+      ],
+    });
+
+    const result = await promise;
+    expect(result.success).toBe(true);
+    expect(result.videoUrl).toBe('https://media/video.mp4');
+  });
+
+  it('falls back to the formats array, preferring a complete mp4', async () => {
+    const manager = new YtdlpManager();
+    const promise = manager.extract('https://example.com/v');
+    runWithOutput({
+      title: 'Formats',
+      formats: [
+        { url: 'https://media/low.webm', ext: 'webm', vcodec: 'vp9', acodec: 'opus' },
+        { url: 'https://media/good.mp4', ext: 'mp4', vcodec: 'h264', acodec: 'aac' },
+      ],
+    });
+
+    const result = await promise;
+    expect(result.videoUrl).toBe('https://media/good.mp4');
+  });
+
+  it('returns an error when no playable url is found', async () => {
+    const manager = new YtdlpManager();
+    const promise = manager.extract('https://example.com/v');
+    runWithOutput({ title: 'Nothing' });
+
+    await expect(promise).resolves.toEqual({
+      success: false,
+      error: 'No playable URL found',
+    });
+  });
+
+  it('returns an error on a non-zero exit code', async () => {
+    const manager = new YtdlpManager();
+    const promise = manager.extract('https://example.com/v');
+    lastProc.stderr.emit('data', Buffer.from('boom'));
+    lastProc.emit('close', 1);
+
+    await expect(promise).resolves.toEqual({ success: false, error: 'boom' });
+  });
+
+  it('returns an error when the process fails to spawn', async () => {
+    const manager = new YtdlpManager();
+    const promise = manager.extract('https://example.com/v');
+    lastProc.emit('error', new Error('ENOENT'));
+
+    const result = await promise;
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('ENOENT');
+  });
+
+  it('returns an error on unparseable JSON', async () => {
+    const manager = new YtdlpManager();
+    const promise = manager.extract('https://example.com/v');
+    lastProc.stdout.emit('data', Buffer.from('not json'));
+    lastProc.emit('close', 0);
+
+    await expect(promise).resolves.toEqual({
+      success: false,
+      error: 'Failed to parse yt-dlp output',
+    });
+  });
+
+  it('records subtitles from the output and clears them on demand', async () => {
+    const manager = new YtdlpManager();
+    const promise = manager.extract('https://example.com/v');
+    runWithOutput({
+      url: 'https://media/v.mp4',
+      title: 'Subs',
+      subtitles: { en: [{ url: 'https://subs/en.vtt', ext: 'vtt' }] },
+    });
+    await promise;
+
+    expect(manager.getLastSubtitles()).toEqual([
+      { url: 'https://subs/en.vtt', language: 'en', isAutoGenerated: false },
+    ]);
+
+    manager.clearLastSubtitles();
+    expect(manager.getLastSubtitles()).toEqual([]);
+  });
+});

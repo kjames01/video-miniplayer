@@ -107,11 +107,11 @@ export class ChatPanel {
       this.saveApiKey();
     });
 
-    // Gemini link
+    // Gemini link - open in default browser via main process (window.open is
+    // blocked in the sandboxed renderer)
     document.getElementById('gemini-link')?.addEventListener('click', (e) => {
       e.preventDefault();
-      // Open in default browser via shell
-      window.open('https://aistudio.google.com/app/apikey', '_blank', 'noopener,noreferrer');
+      window.electronAPI.openExternal('https://aistudio.google.com/app/apikey');
     });
   }
 

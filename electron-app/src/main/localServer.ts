@@ -1,7 +1,13 @@
 import * as http from 'http';
 import { BrowserWindow } from 'electron';
 import { HTTP_ENDPOINTS, IPC_CHANNELS } from '../shared/types';
-import { HTTP_PORT, MAX_BODY_SIZE, REQUEST_TIMEOUT_MS } from '../shared/constants';
+import {
+  HTTP_PORT,
+  MAX_BODY_SIZE,
+  REQUEST_TIMEOUT_MS,
+  EXTENSION_TOKEN,
+  EXTENSION_TOKEN_HEADER,
+} from '../shared/constants';
 
 // Security constants
 const MAX_URL_LENGTH = 2048;
@@ -69,7 +75,7 @@ export class LocalServer {
         res.setHeader('Access-Control-Allow-Origin', origin);
       }
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Miniplayer-Token');
 
       if (req.method === 'OPTIONS') {
         res.writeHead(200);
@@ -86,6 +92,16 @@ export class LocalServer {
       }
 
       if (req.method === 'POST' && url === HTTP_ENDPOINTS.SEND_URL) {
+        // Require the shared handshake token. Combined with the 127.0.0.1
+        // binding and the Origin-restricted CORS headers above, this blocks
+        // cross-origin web pages (which can't set this custom header without a
+        // preflight we only allow for the extension) and casual local callers.
+        if (req.headers[EXTENSION_TOKEN_HEADER] !== EXTENSION_TOKEN) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Forbidden' }));
+          return;
+        }
+
         let body = '';
         let destroyed = false;
 

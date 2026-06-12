@@ -1,6 +1,7 @@
 import * as http from 'http';
 import { LocalServer } from '../localServer';
 import { HTTP_PORT } from '../../shared/types';
+import { EXTENSION_TOKEN } from '../../shared/constants';
 
 // Mock Electron's BrowserWindow
 const mockWebContentsSend = jest.fn();
@@ -90,10 +91,34 @@ describe('LocalServer', () => {
       setTimeout(done, 100);
     });
 
-    it('should accept valid URL and send to renderer', async () => {
+    it('should return 403 when the handshake token is missing', async () => {
       const response = await fetch(`${baseUrl}/send-url`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://example.com/video', title: 'Test Video' })
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error).toBe('Forbidden');
+      expect(mockWebContentsSend).not.toHaveBeenCalled();
+    });
+
+    it('should return 403 when the handshake token is wrong', async () => {
+      const response = await fetch(`${baseUrl}/send-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Miniplayer-Token': 'wrong-token' },
+        body: JSON.stringify({ url: 'https://example.com/video', title: 'Test Video' })
+      });
+
+      expect(response.status).toBe(403);
+      expect(mockWebContentsSend).not.toHaveBeenCalled();
+    });
+
+    it('should accept valid URL and send to renderer', async () => {
+      const response = await fetch(`${baseUrl}/send-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Miniplayer-Token': EXTENSION_TOKEN },
         body: JSON.stringify({ url: 'https://example.com/video', title: 'Test Video' })
       });
       const data = await response.json();
@@ -108,7 +133,7 @@ describe('LocalServer', () => {
     it('should use default title when not provided', async () => {
       const response = await fetch(`${baseUrl}/send-url`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Miniplayer-Token': EXTENSION_TOKEN },
         body: JSON.stringify({ url: 'https://example.com/video' })
       });
 
@@ -119,7 +144,7 @@ describe('LocalServer', () => {
     it('should return 400 when URL is missing', async () => {
       const response = await fetch(`${baseUrl}/send-url`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Miniplayer-Token': EXTENSION_TOKEN },
         body: JSON.stringify({ title: 'No URL' })
       });
       const data = await response.json();
@@ -131,7 +156,7 @@ describe('LocalServer', () => {
     it('should return 400 for non-HTTP URLs', async () => {
       const response = await fetch(`${baseUrl}/send-url`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Miniplayer-Token': EXTENSION_TOKEN },
         body: JSON.stringify({ url: 'file:///etc/passwd', title: 'Malicious' })
       });
       const data = await response.json();
@@ -143,13 +168,29 @@ describe('LocalServer', () => {
     it('should return 400 for invalid JSON', async () => {
       const response = await fetch(`${baseUrl}/send-url`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Miniplayer-Token': EXTENSION_TOKEN },
         body: 'not valid json'
       });
       const data = await response.json();
 
       expect(response.status).toBe(400);
       expect(data.error).toBe('Invalid JSON');
+    });
+
+    it('should not play a video when the request body exceeds the size limit', async () => {
+      const oversized = 'x'.repeat(11000); // > MAX_BODY_SIZE (10240)
+      try {
+        await fetch(`${baseUrl}/send-url`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Miniplayer-Token': EXTENSION_TOKEN },
+          body: JSON.stringify({ url: 'https://example.com/v', title: oversized })
+        });
+      } catch {
+        // The server destroys the connection after exceeding the limit, which
+        // can surface as a fetch network error. Either way, no video plays.
+      }
+
+      expect(mockWebContentsSend).not.toHaveBeenCalled();
     });
   });
 
@@ -181,6 +222,26 @@ describe('LocalServer', () => {
 
       expect(response.status).toBe(404);
       expect(data.error).toBe('Not found');
+    });
+  });
+
+  describe('port in use', () => {
+    it('notifies the renderer when the port is already taken', (done) => {
+      server.start();
+
+      setTimeout(() => {
+        const second = new LocalServer(mockBrowserWindow);
+        second.start();
+
+        setTimeout(() => {
+          expect(mockWebContentsSend).toHaveBeenCalledWith(
+            'extraction-error',
+            expect.stringContaining('already in use')
+          );
+          second.stop();
+          done();
+        }, 250);
+      }, 100);
     });
   });
 

@@ -9,6 +9,7 @@ export class Controls {
   private muteBtn: HTMLButtonElement;
   private volumeSlider: HTMLInputElement;
   private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
+  private saveVolumeTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(player: VideoPlayer) {
     this.player = player;
@@ -21,6 +22,37 @@ export class Controls {
     this.volumeSlider = document.getElementById('volume-slider') as HTMLInputElement;
 
     this.setupEventListeners();
+    this.applySavedVolume();
+  }
+
+  /**
+   * Restore the user's last volume from persisted settings. The <video>
+   * element's volume property persists across src changes, so setting it once
+   * is enough for subsequent videos.
+   */
+  private async applySavedVolume(): Promise<void> {
+    try {
+      const settings = await window.electronAPI.getSettings();
+      if (settings && typeof settings.volume === 'number') {
+        this.player.setVolume(settings.volume);
+        this.volumeSlider.value = String(settings.volume * 100);
+        this.updateMuteButton();
+      }
+    } catch (e) {
+      console.error('Failed to load volume setting:', e);
+    }
+  }
+
+  /**
+   * Debounced persistence of the current volume so dragging the slider doesn't
+   * spam the IPC channel.
+   */
+  private persistVolume(): void {
+    if (this.saveVolumeTimer) clearTimeout(this.saveVolumeTimer);
+    this.saveVolumeTimer = setTimeout(() => {
+      this.saveVolumeTimer = null;
+      window.electronAPI.saveSettings({ volume: this.player.getVolume() });
+    }, 500);
   }
 
   private setupEventListeners(): void {
@@ -72,6 +104,7 @@ export class Controls {
     video.addEventListener('volumechange', () => {
       this.volumeSlider.value = String(this.player.getVolume() * 100);
       this.updateMuteButton();
+      this.persistVolume();
     });
 
     // Keyboard controls
@@ -133,6 +166,10 @@ export class Controls {
     if (this.keydownHandler) {
       document.removeEventListener('keydown', this.keydownHandler);
       this.keydownHandler = null;
+    }
+    if (this.saveVolumeTimer) {
+      clearTimeout(this.saveVolumeTimer);
+      this.saveVolumeTimer = null;
     }
   }
 

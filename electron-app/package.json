@@ -8,10 +8,11 @@
   "scripts": {
     "copy-assets": "node -e \"const fs=require('fs');const path=require('path');['index.html','styles.css'].forEach(f=>fs.copyFileSync(path.join('src/renderer',f),path.join('dist/renderer',f)))\"",
     "bundle-renderer": "esbuild src/renderer/renderer.ts --bundle --outfile=dist/renderer/renderer.js --platform=browser --target=es2020 --sourcemap",
-    "dev": "tsc && npm run bundle-renderer && npm run copy-assets && electron .",
-    "build": "tsc && npm run bundle-renderer && npm run copy-assets && electron-builder",
+    "bundle-preload": "esbuild src/preload/preload.ts --bundle --outfile=dist/preload/preload.js --platform=node --target=node18 --external:electron --sourcemap",
+    "dev": "tsc && npm run bundle-renderer && npm run bundle-preload && npm run copy-assets && electron .",
+    "build": "tsc && npm run bundle-renderer && npm run bundle-preload && npm run copy-assets && electron-builder",
     "start": "electron .",
-    "compile": "tsc && npm run bundle-renderer && npm run copy-assets",
+    "compile": "tsc && npm run bundle-renderer && npm run bundle-preload && npm run copy-assets",
     "watch": "tsc -w",
     "test": "jest",
     "test:e2e": "npm run compile && npx playwright test",
@@ -34,8 +35,7 @@
     "typescript": "^5.3.0"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
-    "youtube-dl-exec": "^3.0.0"
+    "@google/generative-ai": "^0.21.0"
   },
   "build": {
     "appId": "com.miniplayer.video",

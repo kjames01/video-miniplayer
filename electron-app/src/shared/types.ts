@@ -64,6 +64,7 @@ export const IPC_CHANNELS = {
   SET_ALWAYS_ON_TOP: 'set-always-on-top',
   GET_SETTINGS: 'get-settings',
   SAVE_SETTINGS: 'save-settings',
+  OPEN_EXTERNAL: 'open-external',
 
   // Main to Renderer
   VIDEO_READY: 'video-ready',

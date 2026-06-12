@@ -1,10 +1,11 @@
-import { ipcMain, app } from 'electron';
-import { IPC_CHANNELS, ExtractResult, AppSettings, TranscriptResult, ChatMessage, GeminiSettings } from '../shared/types';
+import { ipcMain, shell } from 'electron';
+import { IPC_CHANNELS, ExtractResult, TranscriptResult, ChatMessage, GeminiSettings } from '../shared/types';
 import { WindowManager } from './windowManager';
 import { YtdlpManager } from './ytdlpManager';
 import { UrlCache } from './urlCache';
 import { TranscriptManager } from './transcriptManager';
-import { GeminiService } from './geminiService';
+import { GeminiService, DEFAULT_GEMINI_MODEL } from './geminiService';
+import { SettingsStore } from './settingsStore';
 
 // Security constants
 const ALLOWED_PROTOCOLS = ['http:', 'https:'];
@@ -15,10 +16,7 @@ let urlCache: UrlCache | null = null;
 let transcriptManager: TranscriptManager | null = null;
 let geminiService: GeminiService | null = null;
 let lastTranscript: TranscriptResult | null = null;
-let settings: AppSettings = {
-  alwaysOnTop: true,
-  volume: 1,
-};
+let settingsStore: SettingsStore | null = null;
 
 /**
  * Validates a URL for security
@@ -44,48 +42,6 @@ function validateUrl(url: unknown): { valid: boolean; error?: string } {
   return { valid: true };
 }
 
-/**
- * Validates and sanitizes settings input
- */
-function validateSettings(newSettings: unknown): Partial<AppSettings> {
-  const validated: Partial<AppSettings> = {};
-
-  if (typeof newSettings !== 'object' || newSettings === null) {
-    return validated;
-  }
-
-  const input = newSettings as Record<string, unknown>;
-
-  if (typeof input.alwaysOnTop === 'boolean') {
-    validated.alwaysOnTop = input.alwaysOnTop;
-  }
-
-  if (typeof input.volume === 'number' && input.volume >= 0 && input.volume <= 1) {
-    validated.volume = input.volume;
-  }
-
-  if (input.lastBounds && typeof input.lastBounds === 'object') {
-    const bounds = input.lastBounds as Record<string, unknown>;
-    if (
-      typeof bounds.x === 'number' &&
-      typeof bounds.y === 'number' &&
-      typeof bounds.width === 'number' &&
-      typeof bounds.height === 'number' &&
-      bounds.width > 0 &&
-      bounds.height > 0
-    ) {
-      validated.lastBounds = {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
-      };
-    }
-  }
-
-  return validated;
-}
-
 export function getYtdlpManager(): YtdlpManager | null {
   return ytdlpManager;
 }
@@ -94,11 +50,16 @@ export function getUrlCache(): UrlCache | null {
   return urlCache;
 }
 
-export function setupIpcHandlers(windowManager: WindowManager): void {
+export function getTranscriptManager(): TranscriptManager | null {
+  return transcriptManager;
+}
+
+export function setupIpcHandlers(windowManager: WindowManager, store: SettingsStore): void {
   ytdlpManager = new YtdlpManager();
   urlCache = new UrlCache();
   transcriptManager = new TranscriptManager();
   geminiService = new GeminiService();
+  settingsStore = store;
 
   // Handle video URL extraction
   ipcMain.handle(IPC_CHANNELS.EXTRACT_VIDEO, async (_event, url: string): Promise<ExtractResult> => {
@@ -107,6 +68,13 @@ export function setupIpcHandlers(windowManager: WindowManager): void {
     if (!validation.valid) {
       return { success: false, error: validation.error };
     }
+
+    // New video request: clear transcript state from the previous video so a
+    // later "Load transcript" can never surface the prior video's captions.
+    // For cache hits and direct media URLs we don't run yt-dlp, so subtitles
+    // stay cleared (correctly reported as "no transcript available").
+    ytdlpManager?.clearLastSubtitles();
+    lastTranscript = null;
 
     try {
       // Check cache first
@@ -153,9 +121,10 @@ export function setupIpcHandlers(windowManager: WindowManager): void {
     windowManager.minimize();
   });
 
+  // Close hides to tray (matches the native close handler and the tray-only
+  // quit design). Quitting happens only via the tray menu.
   ipcMain.on(IPC_CHANNELS.CLOSE_WINDOW, () => {
-    windowManager.destroy();
-    app.quit();
+    windowManager.close();
   });
 
   ipcMain.on(IPC_CHANNELS.SET_ALWAYS_ON_TOP, (_event, value: boolean) => {
@@ -164,18 +133,28 @@ export function setupIpcHandlers(windowManager: WindowManager): void {
       return;
     }
     windowManager.setAlwaysOnTop(value);
-    settings.alwaysOnTop = value;
+    settingsStore?.update({ alwaysOnTop: value });
+  });
+
+  // Open an external URL in the user's default browser. Renderer cannot do
+  // this reliably (window.open is blocked), so it routes through the main
+  // process via shell.openExternal, restricted to http/https.
+  ipcMain.handle(IPC_CHANNELS.OPEN_EXTERNAL, async (_event, url: string): Promise<void> => {
+    const validation = validateUrl(url);
+    if (!validation.valid) {
+      return;
+    }
+    await shell.openExternal(url);
   });
 
   // Settings
-  ipcMain.handle(IPC_CHANNELS.GET_SETTINGS, (): AppSettings => {
-    return settings;
+  ipcMain.handle(IPC_CHANNELS.GET_SETTINGS, () => {
+    return settingsStore?.get();
   });
 
-  ipcMain.handle(IPC_CHANNELS.SAVE_SETTINGS, (_event, newSettings: Partial<AppSettings>) => {
-    // Validate and sanitize settings before merging
-    const validatedSettings = validateSettings(newSettings);
-    settings = { ...settings, ...validatedSettings };
+  ipcMain.handle(IPC_CHANNELS.SAVE_SETTINGS, (_event, newSettings: unknown) => {
+    // SettingsStore validates and persists.
+    settingsStore?.update(newSettings as Record<string, unknown>);
   });
 
   // ========== Chat/Transcript Handlers ==========
@@ -203,7 +182,7 @@ export function setupIpcHandlers(windowManager: WindowManager): void {
   // Get Gemini settings
   ipcMain.handle(IPC_CHANNELS.GET_GEMINI_SETTINGS, (): GeminiSettings => {
     if (!geminiService) {
-      return { model: 'gemini-1.5-flash' };
+      return { model: DEFAULT_GEMINI_MODEL };
     }
     return geminiService.getSettings();
   });

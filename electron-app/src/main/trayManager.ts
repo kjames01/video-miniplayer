@@ -1,5 +1,4 @@
 import { Tray, Menu, app, nativeImage } from 'electron';
-import * as path from 'path';
 import { WindowManager } from './windowManager';
 
 export class TrayManager {
@@ -12,11 +11,6 @@ export class TrayManager {
   }
 
   private createTray(): void {
-    // Create a simple tray icon
-    const iconPath = app.isPackaged
-      ? path.join(process.resourcesPath, 'icons', 'icon.png')
-      : path.join(__dirname, '../../resources/icons/icon.svg');
-
     // Create a simple 16x16 icon for the tray
     const icon = nativeImage.createFromDataURL(
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAnklEQVR4nO2SwQqDMBBEX+3/f2au0ouHgogg1kMPnuuhFMR8QA+JNkFaGgsCDiSzM7vJhq+TAHFAM5IrSZIkyRe0kgWQIklPsgQO4A0MSabRPtBKLgHnIY/Aa+D6aVBJ+vAHgDPwAvyM1PgjcqABjsCV+w0/beCO5CbvM3CL9XYEgSpAU/b95IZ/BYL8EGgkG5JV+cX0IjuApJ4E+kcTdwE93DP+2eJD5gAAAABJRU5ErkJggg=='

@@ -1,7 +1,8 @@
 import { net } from 'electron';
-import { TranscriptSegment, TranscriptResult } from '../shared/types';
+import { TranscriptResult } from '../shared/types';
 import { SubtitleInfo } from './ytdlpManager';
 import { CACHE_DURATION_MS } from '../shared/constants';
+import { parseVTT } from './vttParser';
 
 const TRANSCRIPT_REQUEST_TIMEOUT_MS = 10000;
 
@@ -25,7 +26,7 @@ export class TranscriptManager {
 
     try {
       const vttContent = await this.fetchUrl(subtitleInfo.url);
-      const segments = this.parseVTT(vttContent);
+      const segments = parseVTT(vttContent);
 
       if (segments.length === 0) {
         return { success: false, error: 'No transcript segments found' };
@@ -111,115 +112,6 @@ export class TranscriptManager {
 
       request.end();
     });
-  }
-
-  /**
-   * Parse VTT subtitle format into segments
-   */
-  private parseVTT(vttContent: string): TranscriptSegment[] {
-    const segments: TranscriptSegment[] = [];
-    const lines = vttContent.split('\n');
-
-    let currentSegment: Partial<TranscriptSegment> | null = null;
-    let textLines: string[] = [];
-
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-
-      // Skip WEBVTT header and empty lines at the start
-      if (trimmedLine === 'WEBVTT' || trimmedLine.startsWith('NOTE')) {
-        continue;
-      }
-
-      // Check for timestamp line (e.g., "00:00:01.000 --> 00:00:04.000")
-      const timestampMatch = trimmedLine.match(
-        /^(\d{2}:)?(\d{2}):(\d{2})[.,](\d{3})\s*-->\s*(\d{2}:)?(\d{2}):(\d{2})[.,](\d{3})/
-      );
-
-      if (timestampMatch) {
-        // Save previous segment if exists
-        if (currentSegment && textLines.length > 0) {
-          currentSegment.text = this.cleanText(textLines.join(' '));
-          if (currentSegment.text) {
-            segments.push(currentSegment as TranscriptSegment);
-          }
-        }
-
-        // Parse start time
-        const startHours = timestampMatch[1] ? parseInt(timestampMatch[1]) : 0;
-        const startMins = parseInt(timestampMatch[2]!);
-        const startSecs = parseInt(timestampMatch[3]!);
-        const startMs = parseInt(timestampMatch[4]!);
-        const start = startHours * 3600 + startMins * 60 + startSecs + startMs / 1000;
-
-        // Parse end time
-        const endHours = timestampMatch[5] ? parseInt(timestampMatch[5]) : 0;
-        const endMins = parseInt(timestampMatch[6]!);
-        const endSecs = parseInt(timestampMatch[7]!);
-        const endMs = parseInt(timestampMatch[8]!);
-        const end = endHours * 3600 + endMins * 60 + endSecs + endMs / 1000;
-
-        currentSegment = { start, end };
-        textLines = [];
-      } else if (trimmedLine && currentSegment) {
-        // Skip cue identifiers (numeric lines before timestamps)
-        if (!/^\d+$/.test(trimmedLine)) {
-          textLines.push(trimmedLine);
-        }
-      } else if (!trimmedLine && currentSegment && textLines.length > 0) {
-        // Empty line ends the current cue
-        currentSegment.text = this.cleanText(textLines.join(' '));
-        if (currentSegment.text) {
-          segments.push(currentSegment as TranscriptSegment);
-        }
-        currentSegment = null;
-        textLines = [];
-      }
-    }
-
-    // Don't forget the last segment
-    if (currentSegment && textLines.length > 0) {
-      currentSegment.text = this.cleanText(textLines.join(' '));
-      if (currentSegment.text) {
-        segments.push(currentSegment as TranscriptSegment);
-      }
-    }
-
-    // Deduplicate consecutive segments with same text (common in auto-generated captions)
-    return this.deduplicateSegments(segments);
-  }
-
-  /**
-   * Clean text by removing VTT formatting tags
-   */
-  private cleanText(text: string): string {
-    return text
-      // Remove VTT tags like <c>, </c>, <00:00:01.000>, etc.
-      .replace(/<[^>]+>/g, '')
-      // Remove positioning info like align:start position:0%
-      .replace(/\b(align|position|line|size):[^\s]+/g, '')
-      // Normalize whitespace
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  /**
-   * Remove duplicate consecutive segments
-   */
-  private deduplicateSegments(segments: TranscriptSegment[]): TranscriptSegment[] {
-    const deduplicated: TranscriptSegment[] = [];
-
-    for (const segment of segments) {
-      const last = deduplicated[deduplicated.length - 1];
-      if (!last || last.text !== segment.text) {
-        deduplicated.push(segment);
-      } else {
-        // Extend the previous segment's end time
-        last.end = segment.end;
-      }
-    }
-
-    return deduplicated;
   }
 
   /**

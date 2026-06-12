@@ -30,6 +30,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return ipcRenderer.invoke(IPC_CHANNELS.SAVE_SETTINGS, settings);
   },
 
+  // Open a URL in the user's default browser (via main process shell)
+  openExternal: (url: string): Promise<void> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.OPEN_EXTERNAL, url);
+  },
+
   // Event listeners for main -> renderer communication
   // Each returns an unsubscribe function to prevent memory leaks
   onPlayUrl: (callback: (url: string, title: string) => void): (() => void) => {
@@ -126,6 +131,7 @@ declare global {
       setAlwaysOnTop: (value: boolean) => void;
       getSettings: () => Promise<AppSettings>;
       saveSettings: (settings: Partial<AppSettings>) => Promise<void>;
+      openExternal: (url: string) => Promise<void>;
       // Event listeners return cleanup functions to prevent memory leaks
       onPlayUrl: (callback: (url: string, title: string) => void) => () => void;
       onVideoReady: (callback: (url: string, title: string) => void) => () => void;

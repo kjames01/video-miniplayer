@@ -1,5 +1,10 @@
 const APP_URL = 'http://127.0.0.1:9527';
 
+// Shared handshake token for the /send-url endpoint. Must match
+// EXTENSION_TOKEN in electron-app/src/shared/constants.ts. This is a basic
+// barrier, not a strong secret (see the note in that file).
+const EXTENSION_TOKEN = 'mp_2f9c1e7a8b4d4f60a1c3e5d7b9f02468';
+
 // Security constants
 const PING_TIMEOUT_MS = 2000;
 const SEND_TIMEOUT_MS = 5000;
@@ -64,7 +69,10 @@ async function sendUrl(url, title) {
 
     const response = await fetch(`${APP_URL}/send-url`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Miniplayer-Token': EXTENSION_TOKEN
+      },
       body: JSON.stringify({ url, title }),
       signal: controller.signal
     });

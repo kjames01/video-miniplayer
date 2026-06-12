@@ -1,9 +1,10 @@
 import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
 import { WindowManager } from './windowManager';
-import { setupIpcHandlers, getYtdlpManager, getUrlCache } from './ipcHandlers';
+import { setupIpcHandlers, getYtdlpManager, getUrlCache, getTranscriptManager } from './ipcHandlers';
 import { TrayManager } from './trayManager';
 import { LocalServer } from './localServer';
+import { SettingsStore } from './settingsStore';
 
 console.log('[Main] Starting app...');
 
@@ -36,13 +37,17 @@ if (!gotTheLock) {
 
   app.whenReady().then(() => {
     console.log('[Main] App is ready, creating window...');
+    // Load persisted settings before creating the window so saved bounds /
+    // always-on-top are applied on first paint
+    const settingsStore = new SettingsStore();
+
     // Create main window
-    windowManager = new WindowManager();
+    windowManager = new WindowManager(settingsStore);
     const mainWindow = windowManager.createWindow();
     console.log('[Main] Window created');
 
     // Setup IPC handlers
-    setupIpcHandlers(windowManager);
+    setupIpcHandlers(windowManager, settingsStore);
 
     // Create system tray
     trayManager = new TrayManager(windowManager);
@@ -54,6 +59,7 @@ if (!gotTheLock) {
     // Periodic cache cleanup every 60 minutes
     cacheCleanupInterval = setInterval(() => {
       getUrlCache()?.cleanup();
+      getTranscriptManager()?.cleanup();
     }, 60 * 60 * 1000);
 
     app.on('activate', () => {
